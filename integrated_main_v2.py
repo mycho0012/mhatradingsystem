@@ -2,7 +2,6 @@ import streamlit as st
 import pandas as pd
 from datetime import datetime, timedelta
 from modified_heikinashi_fibonacci_functions_upbit import MRHATradingSystem, preprocess_codes, check_buy_signal
-from dotenv import load_dotenv
 import os
 
 import streamlit as st
@@ -10,8 +9,6 @@ from streamlit_option_menu import option_menu
 import base64
 
 
-# API KEY 정보 로드
-load_dotenv()
 
 
 def reset_session():
