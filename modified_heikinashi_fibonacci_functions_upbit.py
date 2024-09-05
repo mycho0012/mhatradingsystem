@@ -75,7 +75,6 @@ class MRHATradingSystem:
         ha['h_low'] = ha[['h_open', 'h_close']].join(self.stock_data['Low']).min(axis=1)
         return ha
 
-
     def calculate_mrha(self, rha_data):
         mrha = pd.DataFrame(index=self.stock_data.index, columns=['mh_open', 'mh_high', 'mh_low', 'mh_close'])
         mrha['mh_open'] = (rha_data['h_open'] + rha_data['h_close']) / 2
@@ -109,6 +108,31 @@ class MRHATradingSystem:
         targets['Bullish_Target'] = low_5d * 1.0618
         targets['Bearish_Target'] = high_5d * 0.9382
         self.mrha_data = pd.concat([self.mrha_data, targets], axis=1)
+
+    def calculate_td_setup(self):
+        self.mrha_data['Close_4_bars_ago'] = self.mrha_data['mh_close'].shift(4)
+        self.mrha_data['TD_Buy_Setup'] = 0
+        self.mrha_data['TD_Sell_Setup'] = 0
+        buy_count = 0
+        sell_count = 0
+
+        for i in range(len(self.mrha_data)):
+            if self.mrha_data['mh_close'].iloc[i] < self.mrha_data['Close_4_bars_ago'].iloc[i]:
+                buy_count += 1
+                sell_count = 0
+            elif self.mrha_data['mh_close'].iloc[i] > self.mrha_data['Close_4_bars_ago'].iloc[i]:
+                sell_count += 1
+                buy_count = 0
+            else:
+                buy_count = 0
+                sell_count = 0
+
+            if buy_count == 9:
+                self.mrha_data.loc[self.mrha_data.index[i-8:i+1], 'TD_Buy_Setup'] = range(1, 10)
+                buy_count = 0
+            if sell_count == 9:
+                self.mrha_data.loc[self.mrha_data.index[i-8:i+1], 'TD_Sell_Setup'] = range(1, 10)
+                sell_count = 0
 
     def implement_trading_logic(self):
         signals = pd.DataFrame(index=self.mrha_data.index, columns=['Signal', 'Position', 'Entry_Price', 'Exit_Price'])
@@ -188,6 +212,7 @@ class MRHATradingSystem:
         self.mrha_data = self.calculate_mrha(rha_data)
         self.add_trading_signals()
         self.calculate_price_targets()
+        self.calculate_td_setup()
         self.implement_trading_logic()
         self.run_backtest()
 
@@ -210,7 +235,7 @@ class MRHATradingSystem:
     def plot_results(self):
         fig = make_subplots(rows=3, cols=2, shared_xaxes=True, 
                         vertical_spacing=0.05, horizontal_spacing=0.05,
-                        subplot_titles=('MRHA Chart', 'Backtest Results', 'Portfolio Value', '', 'Daily Returns Distribution', ''),
+                        subplot_titles=('MRHA Chart with TD Setup', 'Backtest Results', 'Portfolio Value', '', 'Daily Returns Distribution', ''),
                         row_heights=[0.5, 0.3, 0.2], column_widths=[0.7, 0.3])
 
         fig.add_trace(go.Candlestick(x=self.mrha_data.index,
@@ -219,6 +244,36 @@ class MRHATradingSystem:
                     low=self.mrha_data['mh_low'],
                     close=self.mrha_data['mh_close'],
                     name='MRHA'), row=1, col=1)
+
+        # TD Buy Setup 텍스트 추가
+        buy_setup_text = self.mrha_data['TD_Buy_Setup'].replace(0, '').astype(str)
+        buy_setup_font = ['green' if x != '9' else 'darkgreen' for x in buy_setup_text]
+        buy_setup_size = [10 if x != '9' else 14 for x in buy_setup_text]
+
+        fig.add_trace(go.Scatter(
+            x=self.mrha_data.index,
+            y=self.mrha_data['mh_low'] - (self.mrha_data['mh_high'] - self.mrha_data['mh_low']) *0.05,
+            text=buy_setup_text,
+            mode='text',
+            textposition='bottom center',
+            textfont=dict(color=buy_setup_font, size=buy_setup_size),
+            name='TD Buy Setup'
+        ), row=1, col=1)
+
+        # TD Sell Setup 텍스트 추가
+        sell_setup_text = self.mrha_data['TD_Sell_Setup'].replace(0, '').astype(str)
+        sell_setup_font = ['red' if x != '9' else 'darkred' for x in sell_setup_text]
+        sell_setup_size = [10 if x != '9' else 14 for x in sell_setup_text]
+
+        fig.add_trace(go.Scatter(
+            x=self.mrha_data.index,
+            y=self.mrha_data['mh_high'] + (self.mrha_data['mh_high'] - self.mrha_data['mh_low']) * 0.1,
+            text=sell_setup_text,
+            mode='text',
+            textposition='top center',
+            textfont=dict(color=sell_setup_font, size=sell_setup_size),
+            name='TD Sell Setup'
+        ), row=1, col=1)
 
         for _, trade in self.trades.iterrows():
             if trade['Type'] == 'Buy':
@@ -240,7 +295,7 @@ class MRHATradingSystem:
         results_text = '<br>'.join([f"{key}: {value:.2f}" if isinstance(value, float) else f"{key}: {value}" for key, value in results.items()])
         fig.add_annotation(text=results_text, align='left', showarrow=False, xref='paper', yref='paper', x=1.02, y=0.95, row=1, col=2)
 
-        fig.update_layout(height=1200, width=1600, title_text=f"MRHA Trading System Results - {self.symbol}")
+        fig.update_layout(height=1200, width=1600, title_text=f"MRHA Trading System Results with TD Setup - {self.symbol}")
         fig.update_xaxes(rangeslider_visible=False, row=1, col=1)
         fig.update_yaxes(title_text="Price", row=1, col=1)
         fig.update_yaxes(title_text="Portfolio Value ($)", row=2, col=1)
@@ -248,7 +303,7 @@ class MRHATradingSystem:
         fig.update_yaxes(title_text="Frequency", row=3, col=1)
 
         return fig
-    
+
 def preprocess_codes(file_path, market_type):
     try:
         df = pd.read_csv(file_path, encoding='utf-8')
@@ -266,9 +321,9 @@ def preprocess_codes(file_path, market_type):
     
     codes = df[code_column].astype(str).str.strip()
     
-    if market_type =="ETF":
+    if market_type == "ETF":
         return (codes + ".KS").tolist()
-    if market_type =="KOSPI":
+    if market_type == "KOSPI":
         return (codes + ".KS").tolist()
     else:
         return codes.tolist()
