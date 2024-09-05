@@ -157,7 +157,7 @@ def fibonacci_analysis():
             else:
                 selected_ticker = kospi_selected.split('-')[0]
 
-           selected_ticker = etf_selected.split(' - ')[0] if etf_selected else kospi_selected.split(' - ')[0]
+            selected_ticker = etf_selected.split(' - ')[0] if etf_selected else kospi_selected.split(' - ')[0]
             user_code = st.text_input("분석할 종목 코드를 입력하세요 (예: 005930.KS):", value=selected_ticker)
 
             if st.button("사용자 지정 코드 분석 시작"):
